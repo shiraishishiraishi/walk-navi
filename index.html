@@ -560,7 +560,7 @@ async function fetchRoute() {
     const route = data.routes[0];
     drawRoute(route.geometry.coordinates);
     parseSteps(route.legs[0].steps);
-    displaySummary(route.distance, route.duration);
+    displaySummary(route.distance, route.duration * 5);
     startBtn.disabled = false;
 
     // Fit map
