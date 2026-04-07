@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>あるく</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@300;400;700&family=Syne+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --bg: #0d0f14;
+    --surface: #161820;
+    --border: #2a2d38;
+    --accent: #c8f55a;
+    --accent2: #5af5c8;
+    --text: #e8eaf0;
+    --muted: #6b7080;
+    --danger: #f55a5a;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Header ── */
+  header {
+    padding: 14px 20px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    background: var(--surface);
+    z-index: 100;
+  }
+
+  .logo {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    color: var(--accent);
+  }
+
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+  .status-dot.active { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .status-dot.navigating { background: var(--accent2); box-shadow: 0 0 8px var(--accent2); animation: pulse 1.5s infinite; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ── Search bar ── */
+  .search-bar {
+    padding: 12px 16px;
+    display: flex;
+    gap: 8px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .search-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .search-input:focus { border-color: var(--accent); }
+  .search-input::placeholder { color: var(--muted); }
+
+  .btn {
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity 0.15s, transform 0.1s;
+    letter-spacing: 0.05em;
+  }
+  .btn:active { transform: scale(0.96); opacity: 0.85; }
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .btn.secondary {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+  }
+  .btn.danger { background: var(--danger); color: #fff; }
+
+  /* ── Map ── */
+  #map {
+    flex: 1;
+    min-height: 0;
+    z-index: 1;
+  }
+
+  /* Leaflet dark tiles override */
+  .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.85) saturate(0.8); }
+  .leaflet-marker-icon { filter: none; }
+
+  /* ── Bottom panel ── */
+  .bottom-panel {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+    z-index: 100;
+  }
+
+  /* Instruction bar */
+  .instruction-bar {
+    display: none;
+    padding: 14px 20px;
+    gap: 14px;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    animation: slideDown 0.3s ease;
+  }
+  .instruction-bar.visible { display: flex; }
+
+  @keyframes slideDown {
+    from { transform: translateY(-10px); opacity: 0; }
+    to   { transform: translateY(0);     opacity: 1; }
+  }
+
+  .direction-icon {
+    font-size: 28px;
+    flex-shrink: 0;
+    width: 40px;
+    text-align: center;
+  }
+
+  .instruction-text {
+    flex: 1;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.4;
+    color: var(--accent2);
+  }
+
+  .distance-badge {
+    font-family: 'Syne Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  /* Controls */
+  .controls {
+    padding: 12px 16px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .info-chips {
+    flex: 1;
+    display: flex;
+    gap: 10px;
+    font-family: 'Syne Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .chip {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .chip-val {
+    color: var(--text);
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  /* ── Overlay messages ── */
+  .toast {
+    position: fixed;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-20px);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 18px;
+    font-size: 13px;
+    color: var(--muted);
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.3s;
+    z-index: 999;
+    white-space: nowrap;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* Custom marker */
+  .user-marker {
+    width: 20px; height: 20px;
+    background: var(--accent2);
+    border-radius: 50%;
+    border: 3px solid #fff;
+    box-shadow: 0 0 12px var(--accent2);
+  }
+
+  .dest-marker {
+    width: 16px; height: 16px;
+    background: var(--accent);
+    border-radius: 50%;
+    border: 3px solid #fff;
+    box-shadow: 0 0 10px var(--accent);
+  }
+
+  /* Loader */
+  .loading-overlay {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    z-index: 9999;
+    transition: opacity 0.5s;
+  }
+  .loading-overlay.hidden { opacity: 0; pointer-events: none; }
+
+  .loader-ring {
+    width: 48px; height: 48px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loading-text {
+    font-size: 13px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+  }
+
+  /* Suggest dropdown */
+  .suggest-list {
+    position: absolute;
+    top: 100%;
+    left: 16px; right: 80px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    z-index: 500;
+    overflow: hidden;
+    display: none;
+  }
+  .suggest-list.open { display: block; }
+  .suggest-item {
+    padding: 11px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+  .suggest-item:last-child { border-bottom: none; }
+  .suggest-item:hover { background: var(--bg); }
+  .suggest-item .sname { font-weight: 700; color: var(--text); }
+  .suggest-item .saddr { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  .search-wrap { position: relative; flex: 1; }
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loader">
+  <div class="loader-ring"></div>
+  <div class="loading-text">現在地を取得中…</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<header>
+  <div class="logo">あるく</div>
+  <div class="status-dot" id="statusDot"></div>
+</header>
+
+<div class="search-bar">
+  <div class="search-wrap">
+    <input class="search-input" id="searchInput" type="text" placeholder="どこへ行きますか？" autocomplete="off">
+    <div class="suggest-list" id="suggestList"></div>
+  </div>
+  <button class="btn" id="searchBtn">検索</button>
+</div>
+
+<div id="map"></div>
+
+<div class="bottom-panel">
+  <div class="instruction-bar" id="instructionBar">
+    <div class="direction-icon" id="dirIcon">↑</div>
+    <div class="instruction-text" id="instrText">直進してください</div>
+    <div class="distance-badge" id="distBadge">--m</div>
+  </div>
+  <div class="controls">
+    <div class="info-chips">
+      <div class="chip">
+        <span class="chip-val" id="totalDist">--</span>
+        <span>距離</span>
+      </div>
+      <div class="chip">
+        <span class="chip-val" id="totalTime">--</span>
+        <span>所要時間</span>
+      </div>
+    </div>
+    <button class="btn secondary" id="locateBtn">現在地</button>
+    <button class="btn" id="startBtn" disabled>案内開始</button>
+  </div>
+</div>
+
+<script>
+// ── State ──
+let map, userMarker, destMarker, routeLine;
+let userPos = null;
+let destPos = null;
+let routeSteps = [];
+let currentStepIndex = 0;
+let watchId = null;
+let isNavigating = false;
+let speakQueue = [];
+let isSpeaking = false;
+
+// ── Map init ──
+const mapEl = document.getElementById('map');
+map = L.map(mapEl, { zoomControl: false, attributionControl: false });
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+L.control.zoom({ position: 'topright' }).addTo(map);
+
+// ── DOM refs ──
+const loader = document.getElementById('loader');
+const statusDot = document.getElementById('statusDot');
+const searchInput = document.getElementById('searchInput');
+const searchBtn = document.getElementById('searchBtn');
+const startBtn = document.getElementById('startBtn');
+const locateBtn = document.getElementById('locateBtn');
+const instructionBar = document.getElementById('instructionBar');
+const dirIcon = document.getElementById('dirIcon');
+const instrText = document.getElementById('instrText');
+const distBadge = document.getElementById('distBadge');
+const totalDist = document.getElementById('totalDist');
+const totalTime = document.getElementById('totalTime');
+const suggestList = document.getElementById('suggestList');
+const toast = document.getElementById('toast');
+
+// ── Custom icons ──
+const userIcon = L.divIcon({ className: '', html: '<div class="user-marker"></div>', iconSize: [20,20], iconAnchor: [10,10] });
+const destIcon = L.divIcon({ className: '', html: '<div class="dest-marker"></div>', iconSize: [16,16], iconAnchor: [8,8] });
+
+// ── Toast ──
+function showToast(msg, duration=2500) {
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), duration);
+}
+
+// ── Speech ──
+function speak(text) {
+  if (!window.speechSynthesis) return;
+  speakQueue.push(text);
+  if (!isSpeaking) flushQueue();
+}
+
+function flushQueue() {
+  if (!speakQueue.length) { isSpeaking = false; return; }
+  isSpeaking = true;
+  const utt = new SpeechSynthesisUtterance(speakQueue.shift());
+  utt.lang = 'ja-JP';
+  utt.rate = 0.95;
+  utt.pitch = 1.0;
+
+  // 日本語の声を優先
+  const voices = speechSynthesis.getVoices();
+  const jaVoice = voices.find(v => v.lang.startsWith('ja'));
+  if (jaVoice) utt.voice = jaVoice;
+
+  utt.onend = () => setTimeout(flushQueue, 300);
+  utt.onerror = () => { isSpeaking = false; flushQueue(); };
+  speechSynthesis.speak(utt);
+}
+
+speechSynthesis.addEventListener('voiceschanged', () => {});
+
+// ── Geolocation ──
+function startLocating() {
+  if (!navigator.geolocation) {
+    showToast('位置情報が使えません');
+    loader.classList.add('hidden');
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(pos => {
+    onPositionUpdate(pos);
+    loader.classList.add('hidden');
+    statusDot.classList.add('active');
+    startWatching();
+  }, err => {
+    loader.classList.add('hidden');
+    showToast('位置情報の取得に失敗しました');
+    // デフォルト位置（東京）
+    map.setView([35.6812, 139.7671], 15);
+  }, { enableHighAccuracy: true, timeout: 10000 });
+}
+
+function startWatching() {
+  if (watchId) navigator.geolocation.clearWatch(watchId);
+  watchId = navigator.geolocation.watchPosition(onPositionUpdate, null, {
+    enableHighAccuracy: true, maximumAge: 2000, timeout: 10000
+  });
+}
+
+function onPositionUpdate(pos) {
+  const lat = pos.coords.latitude;
+  const lng = pos.coords.longitude;
+  userPos = { lat, lng };
+
+  if (!userMarker) {
+    userMarker = L.marker([lat, lng], { icon: userIcon }).addTo(map);
+    map.setView([lat, lng], 16);
+  } else {
+    userMarker.setLatLng([lat, lng]);
+  }
+
+  if (isNavigating) updateNavigation();
+}
+
+function centerOnUser() {
+  if (userPos) map.setView([userPos.lat, userPos.lng], 17);
+  else showToast('現在地を取得中…');
+}
+
+// ── Geocode (Nominatim) ──
+let suggestTimer = null;
+
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.trim();
+  clearTimeout(suggestTimer);
+  if (q.length < 2) { closeSuggest(); return; }
+  suggestTimer = setTimeout(() => fetchSuggestions(q), 500);
+});
+
+searchInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') { closeSuggest(); doSearch(); }
+});
+
+searchBtn.addEventListener('click', () => { closeSuggest(); doSearch(); });
+
+async function fetchSuggestions(q) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&accept-language=ja&countrycodes=jp`;
+    const res = await fetch(url, { headers: { 'Accept-Language': 'ja' } });
+    const data = await res.json();
+    renderSuggestions(data);
+  } catch(e) {}
+}
+
+function renderSuggestions(items) {
+  if (!items.length) { closeSuggest(); return; }
+  suggestList.innerHTML = items.map((item, i) => {
+    const name = item.name || item.display_name.split(',')[0];
+    const addr = item.display_name;
+    return `<div class="suggest-item" data-i="${i}" data-lat="${item.lat}" data-lng="${item.lon}">
+      <div class="sname">${name}</div>
+      <div class="saddr">${addr}</div>
+    </div>`;
+  }).join('');
+  suggestList.classList.add('open');
+
+  suggestList.querySelectorAll('.suggest-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const lat = parseFloat(el.dataset.lat);
+      const lng = parseFloat(el.dataset.lng);
+      const name = el.querySelector('.sname').textContent;
+      searchInput.value = name;
+      closeSuggest();
+      setDestination(lat, lng, name);
+    });
+  });
+}
+
+function closeSuggest() {
+  suggestList.classList.remove('open');
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search-wrap')) closeSuggest();
+});
+
+async function doSearch() {
+  const q = searchInput.value.trim();
+  if (!q) return;
+  showToast('検索中…');
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&accept-language=ja`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!data.length) { showToast('見つかりませんでした'); return; }
+    const item = data[0];
+    setDestination(parseFloat(item.lat), parseFloat(item.lon), item.display_name.split(',')[0]);
+  } catch(e) {
+    showToast('検索に失敗しました');
+  }
+}
+
+function setDestination(lat, lng, name) {
+  destPos = { lat, lng };
+  if (destMarker) destMarker.remove();
+  destMarker = L.marker([lat, lng], { icon: destIcon }).addTo(map);
+  map.setView([lat, lng], 16);
+  showToast(`📍 ${name}`);
+  fetchRoute();
+}
+
+// ── OSRM Routing ──
+async function fetchRoute() {
+  if (!userPos || !destPos) return;
+  startBtn.disabled = true;
+  showToast('経路を計算中…');
+
+  try {
+    const url = `https://router.project-osrm.org/route/v1/foot/${userPos.lng},${userPos.lat};${destPos.lng},${destPos.lat}?steps=true&geometries=geojson&overview=full&annotations=false`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.code !== 'Ok') { showToast('経路が見つかりませんでした'); return; }
+
+    const route = data.routes[0];
+    drawRoute(route.geometry.coordinates);
+    parseSteps(route.legs[0].steps);
+    displaySummary(route.distance, route.duration);
+    startBtn.disabled = false;
+
+    // Fit map
+    const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+    map.fitBounds(L.latLngBounds(coords), { padding: [40, 40] });
+  } catch(e) {
+    showToast('経路取得に失敗しました');
+  }
+}
+
+function drawRoute(coords) {
+  if (routeLine) routeLine.remove();
+  const latlngs = coords.map(c => [c[1], c[0]]);
+  routeLine = L.polyline(latlngs, {
+    color: '#c8f55a',
+    weight: 4,
+    opacity: 0.85,
+    dashArray: '8, 6'
+  }).addTo(map);
+}
+
+function parseSteps(steps) {
+  routeSteps = steps.map(step => {
+    const maneuver = step.maneuver;
+    const type = maneuver.type;
+    const modifier = maneuver.modifier || '';
+    return {
+      instruction: buildInstruction(type, modifier),
+      icon: buildIcon(type, modifier),
+      distance: step.distance,
+      lat: maneuver.location[1],
+      lng: maneuver.location[0],
+    };
+  });
+}
+
+function buildInstruction(type, modifier) {
+  if (type === 'arrive') return '目的地に到着しました';
+  if (type === 'depart') return '案内を開始します。直進してください';
+  if (type === 'turn') {
+    if (modifier.includes('right')) return '右に曲がってください';
+    if (modifier.includes('left')) return '左に曲がってください';
+    if (modifier.includes('straight')) return 'そのまま直進してください';
+    if (modifier.includes('slight right')) return '右斜め方向へ進んでください';
+    if (modifier.includes('slight left')) return '左斜め方向へ進んでください';
+    if (modifier.includes('sharp right')) return '鋭角に右折してください';
+    if (modifier.includes('sharp left')) return '鋭角に左折してください';
+    return '曲がってください';
+  }
+  if (type === 'new name') return 'そのまま直進してください';
+  if (type === 'continue') return '直進を続けてください';
+  if (type === 'roundabout') return 'ロータリーを通過してください';
+  if (type === 'fork') {
+    if (modifier.includes('right')) return '右の道に進んでください';
+    if (modifier.includes('left')) return '左の道に進んでください';
+    return '道なりに進んでください';
+  }
+  return '道なりに進んでください';
+}
+
+function buildIcon(type, modifier) {
+  if (type === 'arrive') return '🏁';
+  if (type === 'depart') return '🚶';
+  if (type === 'turn') {
+    if (modifier.includes('right')) return '→';
+    if (modifier.includes('left')) return '←';
+    if (modifier.includes('slight right')) return '↗';
+    if (modifier.includes('slight left')) return '↖';
+    if (modifier.includes('sharp right')) return '↪';
+    if (modifier.includes('sharp left')) return '↩';
+    return '↑';
+  }
+  return '↑';
+}
+
+function displaySummary(dist, dur) {
+  const km = dist >= 1000 ? (dist/1000).toFixed(1)+'km' : Math.round(dist)+'m';
+  const min = Math.ceil(dur/60);
+  totalDist.textContent = km;
+  totalTime.textContent = min+'分';
+}
+
+// ── Navigation ──
+startBtn.addEventListener('click', () => {
+  if (!routeSteps.length) return;
+  isNavigating = true;
+  currentStepIndex = 0;
+  statusDot.className = 'status-dot navigating';
+  startBtn.textContent = '案内中';
+  startBtn.disabled = true;
+  startBtn.classList.add('danger');
+  instructionBar.classList.add('visible');
+  showStep(0);
+  speak('案内を開始します');
+  startWatching();
+});
+
+function showStep(i) {
+  if (i >= routeSteps.length) return;
+  const step = routeSteps[i];
+  dirIcon.textContent = step.icon;
+  instrText.textContent = step.instruction;
+  distBadge.textContent = step.distance >= 1000
+    ? (step.distance/1000).toFixed(1)+'km'
+    : Math.round(step.distance)+'m';
+}
+
+function updateNavigation() {
+  if (!isNavigating || currentStepIndex >= routeSteps.length) return;
+  const step = routeSteps[currentStepIndex];
+  const dist = calcDist(userPos.lat, userPos.lng, step.lat, step.lng);
+
+  // 次のステップへ（10m以内で到達判定）
+  if (dist < 15 && currentStepIndex < routeSteps.length - 1) {
+    currentStepIndex++;
+    showStep(currentStepIndex);
+    speak(routeSteps[currentStepIndex].instruction);
+
+    if (routeSteps[currentStepIndex].instruction.includes('到着')) {
+      finishNavigation();
+    }
+  }
+
+  // 距離表示更新
+  distBadge.textContent = dist < 1000 ? Math.round(dist)+'m' : (dist/1000).toFixed(1)+'km';
+  userMarker.setLatLng([userPos.lat, userPos.lng]);
+}
+
+function finishNavigation() {
+  isNavigating = false;
+  statusDot.className = 'status-dot active';
+  startBtn.textContent = '案内開始';
+  startBtn.disabled = false;
+  startBtn.classList.remove('danger');
+  speak('目的地に到着しました。お疲れさまでした。');
+  showToast('🏁 到着しました！');
+  setTimeout(() => instructionBar.classList.remove('visible'), 4000);
+}
+
+function calcDist(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = (lat2-lat1) * Math.PI/180;
+  const dLng = (lng2-lng1) * Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+locateBtn.addEventListener('click', centerOnUser);
+
+// ── Init ──
+startLocating();
+</script>
+</body>
+</html>
