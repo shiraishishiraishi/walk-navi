@@ -638,9 +638,12 @@ function buildIcon(type, modifier) {
 
 function displaySummary(dist, dur) {
   const km = dist >= 1000 ? (dist/1000).toFixed(1)+'km' : Math.round(dist)+'m';
-  const min = Math.ceil(dur/60);
+  const totalMin = Math.ceil(dur / 60);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  const timeStr = h > 0 ? `${h}時間${m}分` : `${m}分`;
   totalDist.textContent = km;
-  totalTime.textContent = min+'分';
+  totalTime.textContent = timeStr;
 }
 
 // ── Navigation ──
