@@ -338,6 +338,7 @@
     </div>
     <button class="btn secondary" id="locateBtn">現在地</button>
     <button class="btn" id="startBtn" disabled>案内開始</button>
+    <button class="btn danger" id="stopBtn" style="display:none">中止</button>
   </div>
 </div>
 
@@ -365,6 +366,7 @@ const statusDot = document.getElementById('statusDot');
 const searchInput = document.getElementById('searchInput');
 const searchBtn = document.getElementById('searchBtn');
 const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
 const locateBtn = document.getElementById('locateBtn');
 const instructionBar = document.getElementById('instructionBar');
 const dirIcon = document.getElementById('dirIcon');
@@ -647,13 +649,17 @@ startBtn.addEventListener('click', () => {
   isNavigating = true;
   currentStepIndex = 0;
   statusDot.className = 'status-dot navigating';
-  startBtn.textContent = '案内中';
-  startBtn.disabled = true;
-  startBtn.classList.add('danger');
+  startBtn.style.display = 'none';
+  stopBtn.style.display = '';
   instructionBar.classList.add('visible');
   showStep(0);
   speak('案内を開始します');
   startWatching();
+});
+
+stopBtn.addEventListener('click', () => {
+  if (!confirm('案内を中止しますか？')) return;
+  cancelNavigation();
 });
 
 function showStep(i) {
@@ -690,12 +696,23 @@ function updateNavigation() {
 function finishNavigation() {
   isNavigating = false;
   statusDot.className = 'status-dot active';
-  startBtn.textContent = '案内開始';
+  startBtn.style.display = '';
+  stopBtn.style.display = 'none';
   startBtn.disabled = false;
-  startBtn.classList.remove('danger');
   speak('目的地に到着しました。お疲れさまでした。');
   showToast('🏁 到着しました！');
   setTimeout(() => instructionBar.classList.remove('visible'), 4000);
+}
+
+function cancelNavigation() {
+  isNavigating = false;
+  statusDot.className = 'status-dot active';
+  startBtn.style.display = '';
+  stopBtn.style.display = 'none';
+  startBtn.disabled = false;
+  instructionBar.classList.remove('visible');
+  speechSynthesis.cancel();
+  showToast('案内を中止しました');
 }
 
 function calcDist(lat1, lng1, lat2, lng2) {
